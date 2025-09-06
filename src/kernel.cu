@@ -366,6 +366,27 @@ __global__ void kernComputeIndices(int N, int gridResolution,
     // - Label each boid with the index of its grid cell.
     // - Set up a parallel array of integer indices as pointers to the actual
     //   boid data in pos and vel1/vel2
+  int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+
+  if (index >= N) {
+    return;
+  }
+
+  const glm::vec3& boidPos = pos[index];
+  glm::vec3 gridMax = gridMin + glm::vec3(gridResolution, gridResolution, gridResolution);
+
+  // Not sure if this check is needed, but what else would gridMin/gridResolution be used for?
+  if (boidPos.x < gridMin.x || boidPos.x > gridMax.x ||
+      boidPos.y < gridMin.y || boidPos.y > gridMax.y ||
+      boidPos.z < gridMin.z || boidPos.z > gridMax.z) {
+    return;
+  }
+
+  glm::vec3 boidCell = inverseCellWidth * boidPos;
+  int gridCellIdx = gridIndex3Dto1D(boidCell.x, boidCell.y, boidCell.z, gridResolution);
+
+  indices[index] = index;
+  gridIndices[index] = gridCellIdx;
 }
 
 // LOOK-2.1 Consider how this could be useful for indicating that a cell
