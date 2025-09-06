@@ -446,14 +446,13 @@ __global__ void kernUpdateVelNeighborSearchScattered(
   const glm::vec3& selfPos = pos[realSelfIdx];
   const glm::vec3& selfVel = vel1[realSelfIdx];
 
-  float maxDistance = 0.5f * cellWidth;
+  float maxDistance = imax(rule1Distance, imax(rule2Distance, rule3Distance));
   glm::vec3 newVelocity = selfVel;
 
   // Start performing neighbor search. First, find all grid cells within a max distance of the
   // current boid. Clamp the results to be within the min and max space coordinates.
-  glm::vec3 diagonal = maxDistance * glm::normalize(glm::vec3(1.0f));
-  glm::vec3 minPos = glm::max(gridMin, selfPos - diagonal);
-  glm::vec3 maxPos = glm::min(-gridMin, selfPos + diagonal);
+  glm::vec3 minPos = selfPos - maxDistance;
+  glm::vec3 maxPos = selfPos + maxDistance;
   glm::ivec3 minGridIdx3D = calculateGridIndex3D(minPos, gridMin, inverseCellWidth);
   glm::ivec3 maxGridIdx3D = calculateGridIndex3D(maxPos, gridMin, inverseCellWidth);
 
