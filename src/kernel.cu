@@ -359,13 +359,16 @@ __device__ int gridIndex3Dto1D(int x, int y, int z, int gridResolution) {
   return x + y * gridResolution + z * gridResolution * gridResolution;
 }
 
-__device__ int calculateGridIndex(int index, int gridResolution, glm::vec3 gridMin,
-  float inverseCellWidth, const glm::vec3* pos) {
-  // Make sure position values are non-negative
-  glm::vec3 boidPosOffset = pos[index] - gridMin;
-  glm::vec3 boidCell = inverseCellWidth * boidPosOffset;
-  
-  return gridIndex3Dto1D(boidCell.x, boidCell.y, boidCell.z, gridResolution);
+__device__ int gridIndex3Dto1D(glm::ivec3 gridIndex3D, int gridResolution) {
+  return gridIndex3Dto1D(gridIndex3D.x, gridIndex3D.y, gridIndex3D.z, gridResolution);
+}
+
+__device__ glm::ivec3 calculateGridIndex3D(glm::vec3 boidPosition, glm::vec3 gridMin, float inverseCellWidth) {
+  // Make sure position values are all non-negative
+  glm::vec3 boidPositionOffset = boidPosition - gridMin;
+  glm::vec3 boidCell = inverseCellWidth * boidPositionOffset;
+
+  return glm::ivec3(boidCell);
 }
 
 __global__ void kernComputeIndices(int N, int gridResolution,
@@ -382,7 +385,7 @@ __global__ void kernComputeIndices(int N, int gridResolution,
   }
 
   indices[index] = index;
-  gridIndices[index] = calculateGridIndex(index, gridResolution, gridMin, inverseCellWidth, pos);
+  gridIndices[index] = gridIndex3Dto1D(calculateGridIndex3D(pos[index], gridMin, inverseCellWidth), gridResolution);
 }
 
 // LOOK-2.1 Consider how this could be useful for indicating that a cell
@@ -408,7 +411,7 @@ __global__ void kernIdentifyCellStartEnd(int N, int* particleGridIndices,
 
   int gridCellIdx = particleGridIndices[index];
 
-  if (int prevIndex = index - 1; prevIndex > 0 && particleGridIndices[prevIndex] != gridCellIdx) {
+  if (int prevIndex = index - 1; prevIndex >= 0 && particleGridIndices[prevIndex] != gridCellIdx) {
     gridCellStartIndices[gridCellIdx] = index;
   }
 
@@ -436,6 +439,83 @@ __global__ void kernUpdateVelNeighborSearchScattered(
   if (index >= N) {
     return;
   }
+
+  int realSelfIdx = particleArrayIndices[index];
+  const glm::vec3& selfPos = pos[realSelfIdx];
+  const glm::vec3& selfVel = vel1[realSelfIdx];
+
+  float maxDistance = 0.5f * cellWidth;
+  glm::vec3 newVelocity = selfVel;
+
+  // Start performing neighbor search. First, find all grid cells within a max distance of the
+  // current boid. Clamp the results to be within the min and max space coordinates.
+  glm::vec3 minPos = glm::max(gridMin, selfPos - glm::vec3(maxDistance));
+  glm::vec3 maxPos = glm::min(-gridMin, selfPos + glm::vec3(maxDistance));
+  glm::ivec3 minGridIdx3D = calculateGridIndex3D(minPos, gridMin, inverseCellWidth);
+  glm::ivec3 maxGridIdx3D = calculateGridIndex3D(maxPos, gridMin, inverseCellWidth);
+
+  // For each cell in the search, compute contributing velocity and add to sum
+  for (int gridIdxZ = minGridIdx3D.z; gridIdxZ <= maxGridIdx3D.z; ++gridIdxZ) {
+    for (int gridIdxY = minGridIdx3D.y; gridIdxY <= maxGridIdx3D.y; ++gridIdxY) {
+      for (int gridIdxX = minGridIdx3D.x; gridIdxX <= maxGridIdx3D.x; ++gridIdxX) {
+        int gridIdx = gridIndex3Dto1D(gridIdxX, gridIdxY, gridIdxZ, gridResolution);
+        int startIdx = gridCellStartIndices[gridIdx];
+        int endIdx = gridCellEndIndices[gridIdx];
+
+        // Skip this grid cell if no boids are present
+        if (startIdx == -1 || endIdx == -1) {
+          continue;
+        }
+
+        glm::vec3 perceivedCenter, avoidingDistance, perceivedVelocity;
+        int numRule1Neighbors = 0, numRule3Neighbors = 0;
+
+        for (int currIdx = startIdx; currIdx <= endIdx; ++currIdx) {
+          if (index == currIdx) {
+            continue;
+          }
+
+          int realCurrIdx = particleArrayIndices[currIdx];
+          const glm::vec3& currPos = pos[realCurrIdx];
+          const glm::vec3& currVel = vel1[realCurrIdx];
+          float distance = glm::distance(selfPos, currPos);
+
+          // Rule 1: boids fly towards their local perceived center of mass, which excludes themselves
+          if (distance < rule1Distance) {
+            perceivedCenter += currPos;
+            numRule1Neighbors++;
+          }
+
+          // Rule 2: boids try to stay a distance d away from each other
+          if (distance < rule2Distance) {
+            avoidingDistance -= (currPos - selfPos);
+          }
+
+          // Rule 3: boids try to match the speed of surrounding boids
+          if (distance < rule3Distance) {
+            perceivedVelocity += currVel;
+            numRule3Neighbors++;
+          }
+        }
+
+        glm::vec3 rule1Result;
+        if (numRule1Neighbors != 0) {
+          perceivedCenter /= numRule1Neighbors;
+          rule1Result = rule1Scale * (perceivedCenter - selfPos);
+        }
+
+        glm::vec3 rule3Result;
+        if (numRule3Neighbors != 0) {
+          perceivedVelocity /= numRule3Neighbors;
+          rule3Result = rule3Scale * perceivedVelocity;
+        }
+
+        newVelocity += rule1Result + (rule2Scale * avoidingDistance) + rule3Result;
+      }
+    }
+  }
+
+  vel2[realSelfIdx] = maxSpeed * glm::normalize(newVelocity);
 }
 
 __global__ void kernUpdateVelNeighborSearchCoherent(
