@@ -162,8 +162,7 @@ void Boids::initSimulation(int N) {
   checkCUDAErrorWithLine("cudaMalloc dev_vel2 failed!");
 
   // LOOK-1.2 - This is a typical CUDA kernel invocation.
-  kernGenerateRandomPosArray<<<fullBlocksPerGrid, blockSize>>>(1, numObjects,
-    dev_pos, scene_scale);
+  kernGenerateRandomPosArray<<<fullBlocksPerGrid, blockSize>>>(1, numObjects, dev_pos, scene_scale);
   checkCUDAErrorWithLine("kernGenerateRandomPosArray failed!");
 
   // LOOK-2.1 computing grid params
@@ -444,17 +443,15 @@ __global__ void kernUpdateVelNeighborSearchScattered(
 
   int realSelfIdx = particleArrayIndices[index];
   const glm::vec3& selfPos = pos[realSelfIdx];
-  const glm::vec3& selfVel = vel1[realSelfIdx];
-
-  float maxDistance = imax(rule1Distance, imax(rule2Distance, rule3Distance));
-  glm::vec3 newVelocity = selfVel;
 
   // Start performing neighbor search. First, find all grid cells within a max distance of the
   // current boid. Clamp the results to be within the min and max space coordinates.
-  glm::vec3 minPos = selfPos - maxDistance;
-  glm::vec3 maxPos = selfPos + maxDistance;
-  glm::ivec3 minGridIdx3D = calculateGridIndex3D(minPos, gridMin, inverseCellWidth);
-  glm::ivec3 maxGridIdx3D = calculateGridIndex3D(maxPos, gridMin, inverseCellWidth);
+  float maxDistance = imax(rule1Distance, imax(rule2Distance, rule3Distance));
+  glm::ivec3 minGridIdx3D = calculateGridIndex3D(selfPos - maxDistance, gridMin, inverseCellWidth);
+  glm::ivec3 maxGridIdx3D = calculateGridIndex3D(selfPos + maxDistance, gridMin, inverseCellWidth);
+  
+  glm::vec3 perceivedCenter, avoidingDistance, perceivedVelocity;
+  int numRule1Neighbors = 0, numRule3Neighbors = 0;
 
   // For each cell in the search, compute contributing velocity and add to sum
   for (int gridIdxZ = minGridIdx3D.z; gridIdxZ <= maxGridIdx3D.z; ++gridIdxZ) {
@@ -468,9 +465,6 @@ __global__ void kernUpdateVelNeighborSearchScattered(
         if (startIdx == -1 || endIdx == -1) {
           continue;
         }
-
-        glm::vec3 perceivedCenter, avoidingDistance, perceivedVelocity;
-        int numRule1Neighbors = 0, numRule3Neighbors = 0;
 
         for (int currIdx = startIdx; currIdx <= endIdx; ++currIdx) {
           if (index == currIdx) {
@@ -499,24 +493,24 @@ __global__ void kernUpdateVelNeighborSearchScattered(
             numRule3Neighbors++;
           }
         }
-
-        glm::vec3 rule1Result;
-        if (numRule1Neighbors != 0) {
-          perceivedCenter /= numRule1Neighbors;
-          rule1Result = rule1Scale * (perceivedCenter - selfPos);
-        }
-
-        glm::vec3 rule3Result;
-        if (numRule3Neighbors != 0) {
-          perceivedVelocity /= numRule3Neighbors;
-          rule3Result = rule3Scale * perceivedVelocity;
-        }
-
-        newVelocity += rule1Result + (rule2Scale * avoidingDistance) + rule3Result;
       }
     }
   }
 
+  glm::vec3 rule1Result;
+  if (numRule1Neighbors != 0) {
+    perceivedCenter /= numRule1Neighbors;
+    rule1Result = rule1Scale * (perceivedCenter - selfPos);
+  }
+
+  glm::vec3 rule3Result;
+  if (numRule3Neighbors != 0) {
+    perceivedVelocity /= numRule3Neighbors;
+    rule3Result = rule3Scale * perceivedVelocity;
+  }
+
+  glm::vec3 newVelocity = vel1[realSelfIdx] + rule1Result + (rule2Scale * avoidingDistance) + rule3Result;
+  
   if (glm::length(newVelocity) > maxSpeed) {
     vel2[realSelfIdx] = maxSpeed * glm::normalize(newVelocity);
   } else {
