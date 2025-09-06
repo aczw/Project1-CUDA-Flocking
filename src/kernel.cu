@@ -181,11 +181,11 @@ void Boids::initSimulation(int N) {
   // TODO-2.1 TODO-2.3 - Allocate additional buffers here.
   cudaMalloc((void**)&dev_particleArrayIndices, N * sizeof(int));
   checkCUDAErrorWithLine("cudaMalloc dev_particleArrayIndices failed!");
-  dev_thrust_particleArrayIndices = dev_thrust_particleArrayIndices;
+  dev_thrust_particleArrayIndices = thrust::device_ptr<int>(dev_particleArrayIndices);
 
   cudaMalloc((void**)&dev_particleGridIndices, N * sizeof(int));
   checkCUDAErrorWithLine("cudaMalloc dev_particleGridIndices failed!");
-  dev_thrust_particleGridIndices = dev_thrust_particleGridIndices;
+  dev_thrust_particleGridIndices = thrust::device_ptr<int>(dev_particleGridIndices);
 
   cudaMalloc((void**)&dev_gridCellStartIndices, gridCellCount * sizeof(int));
   checkCUDAErrorWithLine("cudaMalloc dev_gridCellStartIndices failed!");
@@ -449,8 +449,9 @@ __global__ void kernUpdateVelNeighborSearchScattered(
 
   // Start performing neighbor search. First, find all grid cells within a max distance of the
   // current boid. Clamp the results to be within the min and max space coordinates.
-  glm::vec3 minPos = glm::max(gridMin, selfPos - glm::vec3(maxDistance));
-  glm::vec3 maxPos = glm::min(-gridMin, selfPos + glm::vec3(maxDistance));
+  glm::vec3 diagonal = maxDistance * glm::normalize(glm::vec3(1.0f));
+  glm::vec3 minPos = glm::max(gridMin, selfPos - diagonal);
+  glm::vec3 maxPos = glm::min(-gridMin, selfPos + diagonal);
   glm::ivec3 minGridIdx3D = calculateGridIndex3D(minPos, gridMin, inverseCellWidth);
   glm::ivec3 maxGridIdx3D = calculateGridIndex3D(maxPos, gridMin, inverseCellWidth);
 
@@ -565,6 +566,20 @@ void Boids::stepSimulationScatteredGrid(float dt) {
   // - Perform velocity updates using neighbor search
   // - Update positions
   // - Ping-pong buffers as needed
+  int N = numObjects;
+  const dim3 gridDimBoids((N + blockSize - 1) / blockSize);
+  const dim3 gridDimGridCells((gridCellCount + blockSize - 1) / blockSize);
+  
+  kernComputeIndices<<<gridDimBoids, blockSize>>>(N, gridSideCount, gridMinimum, gridInverseCellWidth, dev_pos, dev_particleArrayIndices, dev_particleGridIndices);
+  thrust::sort_by_key(dev_thrust_particleGridIndices, dev_thrust_particleGridIndices + N, dev_thrust_particleArrayIndices);
+  kernResetIntBuffer<<<gridDimGridCells, blockSize>>>(gridCellCount, dev_gridCellStartIndices, -1);
+  kernResetIntBuffer<<<gridDimGridCells, blockSize>>>(gridCellCount, dev_gridCellEndIndices, -1);
+  kernIdentifyCellStartEnd<<<gridDimBoids, blockSize>>>(N, dev_particleGridIndices, dev_gridCellStartIndices, dev_gridCellEndIndices);
+  kernUpdateVelNeighborSearchScattered<<<gridDimBoids, blockSize>>>(N, gridSideCount, gridMinimum, gridInverseCellWidth, gridCellWidth, dev_gridCellStartIndices, dev_gridCellEndIndices, dev_particleArrayIndices, dev_pos, dev_vel1, dev_vel2);
+  kernUpdatePos<<<gridDimBoids, blockSize>>>(N, dt, dev_pos, dev_vel2);
+
+  cudaMemcpy(dev_vel1, dev_vel2, N * sizeof(glm::vec3), cudaMemcpyDeviceToDevice);
+  checkCUDAErrorWithLine("cudaMemcpy from dev_vel2 to dev_vel1 failed!");
 }
 
 void Boids::stepSimulationCoherentGrid(float dt) {
@@ -621,7 +636,7 @@ void Boids::unitTest() {
   intKeys[7] = 0; intValues[7] = 7;
   intKeys[8] = 5; intValues[8] = 8;
   intKeys[9] = 6; intValues[9] = 9;
-
+  
   cudaMalloc((void**)&dev_intKeys, N * sizeof(int));
   checkCUDAErrorWithLine("cudaMalloc dev_intKeys failed!");
 
