@@ -318,10 +318,12 @@ __global__ void kernUpdateVelocityBruteForce(int N, glm::vec3 *pos,
   glm::vec3 newVelocity = computeVelocityChange(N, index, pos, vel1);
 
   // Clamp the speed
-  newVelocity = maxSpeed * glm::normalize(newVelocity);
-  
   // Record the new velocity into vel2. Question: why NOT vel1?
-  vel2[index] = newVelocity;
+  if (glm::length(newVelocity) > maxSpeed) {
+    vel2[index] = maxSpeed * glm::normalize(newVelocity);
+  } else {
+    vel2[index] = newVelocity;
+  }
 }
 
 /**
@@ -516,7 +518,11 @@ __global__ void kernUpdateVelNeighborSearchScattered(
     }
   }
 
-  vel2[realSelfIdx] = maxSpeed * glm::normalize(newVelocity);
+  if (glm::length(newVelocity) > maxSpeed) {
+    vel2[realSelfIdx] = maxSpeed * glm::normalize(newVelocity);
+  } else {
+    vel2[realSelfIdx] = newVelocity;
+  }
 }
 
 __global__ void kernUpdateVelNeighborSearchCoherent(
