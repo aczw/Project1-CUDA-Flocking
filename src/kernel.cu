@@ -359,6 +359,15 @@ __device__ int gridIndex3Dto1D(int x, int y, int z, int gridResolution) {
   return x + y * gridResolution + z * gridResolution * gridResolution;
 }
 
+__device__ int calculateGridIndex(int index, int gridResolution, glm::vec3 gridMin,
+  float inverseCellWidth, const glm::vec3* pos) {
+  // Make sure position values are non-negative
+  glm::vec3 boidPosOffset = pos[index] - gridMin;
+  glm::vec3 boidCell = inverseCellWidth * boidPosOffset;
+  
+  return gridIndex3Dto1D(boidCell.x, boidCell.y, boidCell.z, gridResolution);
+}
+
 __global__ void kernComputeIndices(int N, int gridResolution,
   glm::vec3 gridMin, float inverseCellWidth,
   glm::vec3 *pos, int *indices, int *gridIndices) {
@@ -372,21 +381,8 @@ __global__ void kernComputeIndices(int N, int gridResolution,
     return;
   }
 
-  const glm::vec3& boidPos = pos[index];
-  glm::vec3 gridMax = gridMin + glm::vec3(gridResolution, gridResolution, gridResolution);
-
-  // Not sure if this check is needed, but what else would gridMin/gridResolution be used for?
-  if (boidPos.x < gridMin.x || boidPos.x > gridMax.x ||
-      boidPos.y < gridMin.y || boidPos.y > gridMax.y ||
-      boidPos.z < gridMin.z || boidPos.z > gridMax.z) {
-    return;
-  }
-
-  glm::vec3 boidCell = inverseCellWidth * boidPos;
-  int gridCellIdx = gridIndex3Dto1D(boidCell.x, boidCell.y, boidCell.z, gridResolution);
-
   indices[index] = index;
-  gridIndices[index] = gridCellIdx;
+  gridIndices[index] = calculateGridIndex(index, gridResolution, gridMin, inverseCellWidth, pos);
 }
 
 // LOOK-2.1 Consider how this could be useful for indicating that a cell
@@ -435,6 +431,11 @@ __global__ void kernUpdateVelNeighborSearchScattered(
   // - Access each boid in the cell and compute velocity change from
   //   the boids rules, if this boid is within the neighborhood distance.
   // - Clamp the speed change before putting the new speed in vel2
+  int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+
+  if (index >= N) {
+    return;
+  }
 }
 
 __global__ void kernUpdateVelNeighborSearchCoherent(
