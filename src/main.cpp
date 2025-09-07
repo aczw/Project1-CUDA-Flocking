@@ -23,14 +23,14 @@
 // ================
 
 // Used if no arguments are passed in via command line.
-constexpr int DEFAULT_N = 50'000;
+constexpr int DEFAULT_N = 100'000;
 constexpr int DEFAULT_BLOCK_SIZE = 128;
 constexpr float DT = 0.2f;
 
 // LOOK-2.1 LOOK-2.3 - toggles for UNIFORM_GRID and COHERENT_GRID
-#define VISUALIZE 0
+#define VISUALIZE 1
 #define UNIFORM_GRID 1
-#define COHERENT_GRID 0
+#define COHERENT_GRID 1
 
 // Performance analysis
 constexpr bool ENABLE_PERF_ANALYSIS = true;
