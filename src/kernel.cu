@@ -46,9 +46,6 @@ void checkCUDAError(const char *msg, int line = -1) {
 * Configuration *
 *****************/
 
-/*! Block size used for CUDA kernel launch. */
-#define blockSize 128
-
 // LOOK-1.2 Parameters for the boids algorithm.
 // These worked well in our reference implementation.
 #define rule1Distance 5.0f
@@ -69,7 +66,7 @@ void checkCUDAError(const char *msg, int line = -1) {
 ***********************************************/
 
 int numObjects;
-dim3 threadsPerBlock(blockSize);
+int blockSize;
 
 // LOOK-1.2 - These buffers are here to hold all your boid information.
 // These get allocated for you in Boids::initSimulation.
@@ -148,9 +145,9 @@ __global__ void kernGenerateRandomPosArray(int time, int N, glm::vec3 * arr, flo
 /**
 * Initialize memory, update some globals
 */
-void Boids::initSimulation(int N) {
+void Boids::initSimulation(int N, int numBlocks) {
   numObjects = N;
-  dim3 fullBlocksPerGrid((N + blockSize - 1) / blockSize);
+  blockSize = numBlocks;
 
   // LOOK-1.2 - This is basic CUDA memory management and error checking.
   // Don't forget to cudaFree in  Boids::endSimulation.
@@ -164,6 +161,7 @@ void Boids::initSimulation(int N) {
   checkCUDAErrorWithLine("cudaMalloc dev_vel2 failed!");
 
   // LOOK-1.2 - This is a typical CUDA kernel invocation.
+  dim3 fullBlocksPerGrid((N + blockSize - 1) / blockSize);
   kernGenerateRandomPosArray<<<fullBlocksPerGrid, blockSize>>>(1, numObjects, dev_pos, scene_scale);
   checkCUDAErrorWithLine("kernGenerateRandomPosArray failed!");
 
@@ -670,10 +668,25 @@ void Boids::stepSimulationScatteredGrid(float dt) {
   
   kernComputeIndices<<<gridDimBoids, blockSize>>>(N, gridSideCount, gridMinimum, gridInverseCellWidth, dev_pos, dev_particleArrayIndices, dev_particleGridIndices);
   thrust::sort_by_key(dev_thrust_particleGridIndices, dev_thrust_particleGridIndices + N, dev_thrust_particleArrayIndices);
+  
   kernResetIntBuffer<<<gridDimGridCells, blockSize>>>(gridCellCount, dev_gridCellStartIndices, -1);
   kernResetIntBuffer<<<gridDimGridCells, blockSize>>>(gridCellCount, dev_gridCellEndIndices, -1);
   kernIdentifyCellStartEnd<<<gridDimBoids, blockSize>>>(N, dev_particleGridIndices, dev_gridCellStartIndices, dev_gridCellEndIndices);
-  kernUpdateVelNeighborSearchScattered<<<gridDimBoids, blockSize>>>(N, gridSideCount, gridMinimum, gridInverseCellWidth, gridCellWidth, dev_gridCellStartIndices, dev_gridCellEndIndices, dev_particleArrayIndices, dev_pos, dev_vel1, dev_vel2);
+  
+  kernUpdateVelNeighborSearchScattered<<<gridDimBoids, blockSize>>>(
+    N,
+    gridSideCount, 
+    gridMinimum, 
+    gridInverseCellWidth, 
+    gridCellWidth, 
+    dev_gridCellStartIndices, 
+    dev_gridCellEndIndices, 
+    dev_particleArrayIndices, 
+    dev_pos, 
+    dev_vel1, 
+    dev_vel2
+  );
+
   kernUpdatePos<<<gridDimBoids, blockSize>>>(N, dt, dev_pos, dev_vel2);
 
   std::swap(dev_vel1, dev_vel2);
@@ -701,11 +714,26 @@ void Boids::stepSimulationCoherentGrid(float dt) {
   
   kernComputeIndices<<<gridDimBoids, blockSize>>>(N, gridSideCount, gridMinimum, gridInverseCellWidth, dev_pos, dev_particleArrayIndices, dev_particleGridIndices);
   thrust::sort_by_key(dev_thrust_particleGridIndices, dev_thrust_particleGridIndices + N, dev_thrust_particleArrayIndices);
+  
   kernResetIntBuffer<<<gridDimGridCells, blockSize>>>(gridCellCount, dev_gridCellStartIndices, -1);
   kernResetIntBuffer<<<gridDimGridCells, blockSize>>>(gridCellCount, dev_gridCellEndIndices, -1);
   kernIdentifyCellStartEnd<<<gridDimBoids, blockSize>>>(N, dev_particleGridIndices, dev_gridCellStartIndices, dev_gridCellEndIndices);
+  
   kernReshuffleBoidsData<<<gridDimBoids, blockSize>>>(N, dev_particleArrayIndices, dev_pos, dev_vel1, dev_posReshuffled, dev_vel1Reshuffled);
-  kernUpdateVelNeighborSearchCoherent<<<gridDimBoids, blockSize>>>(N, gridSideCount, gridMinimum, gridInverseCellWidth, gridCellWidth, dev_gridCellStartIndices, dev_gridCellEndIndices, dev_posReshuffled, dev_vel1Reshuffled, dev_vel2);
+  
+  kernUpdateVelNeighborSearchCoherent<<<gridDimBoids, blockSize>>>(
+    N, 
+    gridSideCount, 
+    gridMinimum, 
+    gridInverseCellWidth, 
+    gridCellWidth, 
+    dev_gridCellStartIndices, 
+    dev_gridCellEndIndices, 
+    dev_posReshuffled, 
+    dev_vel1Reshuffled, 
+    dev_vel2
+  );
+
   kernUpdatePos<<<gridDimBoids, blockSize>>>(N, dt, dev_posReshuffled, dev_vel2);
 
   std::swap(dev_vel1, dev_vel2);
