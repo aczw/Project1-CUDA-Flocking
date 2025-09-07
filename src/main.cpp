@@ -26,6 +26,7 @@
 constexpr int DEFAULT_N = 100'000;
 constexpr int DEFAULT_BLOCK_SIZE = 128;
 constexpr float DT = 0.2f;
+constexpr bool USE_FULLSCREEN = false;
 
 // LOOK-2.1 LOOK-2.3 - toggles for UNIFORM_GRID and COHERENT_GRID
 #define VISUALIZE 1
@@ -33,7 +34,7 @@ constexpr float DT = 0.2f;
 #define COHERENT_GRID 1
 
 // Performance analysis
-constexpr bool ENABLE_PERF_ANALYSIS = true;
+constexpr bool ENABLE_PERF_ANALYSIS = false;
 constexpr bool PROGRESS_INFO = false;
 constexpr int SIMULATION_TIME = 20;
 
@@ -82,9 +83,9 @@ bool init(int numBoids, int blockSize) {
   cudaGetDeviceCount(&device_count);
   if (gpuDevice > device_count) {
     std::cout
-    << "Error: GPU device number is greater than the number of devices!"
-    << " Perhaps a CUDA-capable GPU is not installed?"
-    << std::endl;
+      << "Error: GPU device number is greater than the number of devices!"
+      << " Perhaps a CUDA-capable GPU is not installed?"
+      << std::endl;
     return false;
   }
   cudaGetDeviceProperties(&deviceProp, gpuDevice);
@@ -100,9 +101,9 @@ bool init(int numBoids, int blockSize) {
 
   if (!glfwInit()) {
     std::cout
-    << "Error: Could not initialize GLFW!"
-    << " Perhaps OpenGL 3.3 isn't available?"
-    << std::endl;
+      << "Error: Could not initialize GLFW!"
+      << " Perhaps OpenGL 3.3 isn't available?"
+      << std::endl;
     return false;
   }
 
@@ -111,7 +112,18 @@ bool init(int numBoids, int blockSize) {
   glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
   glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-  window = glfwCreateWindow(width, height, deviceName.c_str(), NULL, NULL);
+  GLFWmonitor* monitor = nullptr;
+
+  if constexpr (USE_FULLSCREEN) {
+    monitor = glfwGetPrimaryMonitor();
+    const GLFWvidmode* mode = glfwGetVideoMode(monitor);
+
+    // Probably will not work correctly if using multiple displays
+    width = mode->width;
+    height = mode->height;
+  }
+
+  window = glfwCreateWindow(width, height, deviceName.c_str(), monitor, NULL);
   if (!window) {
     glfwTerminate();
     return false;
