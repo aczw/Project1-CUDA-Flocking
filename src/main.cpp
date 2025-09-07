@@ -22,13 +22,17 @@
 // ================
 
 // LOOK-2.1 LOOK-2.3 - toggles for UNIFORM_GRID and COHERENT_GRID
-#define VISUALIZE 1
+#define VISUALIZE 0
 #define UNIFORM_GRID 1
 #define COHERENT_GRID 1
 
 // LOOK-1.2 - change this to adjust particle count in the simulation
 const int N_FOR_VIS = 100000;
 const float DT = 0.2f;
+
+// Performance analysis
+constexpr bool ENABLE_PERF_ANALYSIS = true;
+constexpr int SIMULATION_TIME = 10;
 
 /**
 * C main function.
@@ -222,12 +226,15 @@ void initShaders(GLuint * program) {
   }
 
   void mainLoop() {
-    double fps = 0;
+    double currentFps = 0;
+    std::vector<double> fpsHistory;
+
     double timebase = 0;
     int frame = 0;
 
-    Boids::unitTest(); // LOOK-1.2 We run some basic example code to make sure
-                       // your CUDA development setup is ready to go.
+    if constexpr (ENABLE_PERF_ANALYSIS) {
+      std::cout << "===== PERFORMANCE ANALYSIS =====" << std::endl;
+    }
 
     while (!glfwWindowShouldClose(window)) {
       glfwPollEvents();
@@ -236,9 +243,31 @@ void initShaders(GLuint * program) {
       double time = glfwGetTime();
 
       if (time - timebase > 1.0) {
-        fps = frame / (time - timebase);
+        currentFps = frame / (time - timebase);
+        fpsHistory.push_back(currentFps);
         timebase = time;
         frame = 0;
+
+        if constexpr (ENABLE_PERF_ANALYSIS) {
+          std::cout << "Measuring... (" << static_cast<int>(time) << "/" << SIMULATION_TIME << "s)\r";
+        }
+      }
+
+      if constexpr (ENABLE_PERF_ANALYSIS) {
+        if (time > SIMULATION_TIME) {
+          glfwSetWindowShouldClose(window, GL_TRUE);
+          std::cout << "Measuring complete! Here are the results:" << std::endl;
+          std::cout << "- Final FPS: " << currentFps << std::endl;
+
+          double sum = 0.0;
+          for (const double& fps : fpsHistory) {
+            sum += fps;
+          }
+          std::cout << "- Average FPS (over " << SIMULATION_TIME << " seconds): " << sum / static_cast<double>(fpsHistory.size()) << std::endl;
+          std::cout << "================================" << std::endl;
+
+          continue;
+        }
       }
 
       runCUDA();
@@ -246,7 +275,7 @@ void initShaders(GLuint * program) {
       std::ostringstream ss;
       ss << "[";
       ss.precision(1);
-      ss << std::fixed << fps;
+      ss << std::fixed << currentFps;
       ss << " fps] " << deviceName;
       glfwSetWindowTitle(window, ss.str().c_str());
 
