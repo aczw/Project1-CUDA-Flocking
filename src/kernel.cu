@@ -648,8 +648,7 @@ void Boids::stepSimulationNaive(float dt) {
   kernUpdatePos<<<blocksPerGrid, blockSize>>>(numObjects, dt, dev_pos, dev_vel2);
   
   // Ping-pong the velocity buffers
-  cudaMemcpy(dev_vel1, dev_vel2, numObjects * sizeof(glm::vec3), cudaMemcpyDeviceToDevice);
-  checkCUDAErrorWithLine("cudaMemcpy from dev_vel2 to dev_vel1 failed!");
+  std::swap(dev_vel1, dev_vel2);
 }
 
 void Boids::stepSimulationScatteredGrid(float dt) {
@@ -677,8 +676,7 @@ void Boids::stepSimulationScatteredGrid(float dt) {
   kernUpdateVelNeighborSearchScattered<<<gridDimBoids, blockSize>>>(N, gridSideCount, gridMinimum, gridInverseCellWidth, gridCellWidth, dev_gridCellStartIndices, dev_gridCellEndIndices, dev_particleArrayIndices, dev_pos, dev_vel1, dev_vel2);
   kernUpdatePos<<<gridDimBoids, blockSize>>>(N, dt, dev_pos, dev_vel2);
 
-  cudaMemcpy(dev_vel1, dev_vel2, N * sizeof(glm::vec3), cudaMemcpyDeviceToDevice);
-  checkCUDAErrorWithLine("cudaMemcpy from dev_vel2 to dev_vel1 failed!");
+  std::swap(dev_vel1, dev_vel2);
 }
 
 void Boids::stepSimulationCoherentGrid(float dt) {
@@ -710,11 +708,8 @@ void Boids::stepSimulationCoherentGrid(float dt) {
   kernUpdateVelNeighborSearchCoherent<<<gridDimBoids, blockSize>>>(N, gridSideCount, gridMinimum, gridInverseCellWidth, gridCellWidth, dev_gridCellStartIndices, dev_gridCellEndIndices, dev_posReshuffled, dev_vel1Reshuffled, dev_vel2);
   kernUpdatePos<<<gridDimBoids, blockSize>>>(N, dt, dev_posReshuffled, dev_vel2);
 
-  cudaMemcpy(dev_vel1, dev_vel2, N * sizeof(glm::vec3), cudaMemcpyDeviceToDevice);
-  checkCUDAErrorWithLine("cudaMemcpy from dev_vel2 to dev_vel1 failed!");
-
-  cudaMemcpy(dev_pos, dev_posReshuffled, N * sizeof(glm::vec3), cudaMemcpyDeviceToDevice);
-  checkCUDAErrorWithLine("cudaMemcpy from dev_posReshuffled to dev_pos failed!");
+  std::swap(dev_vel1, dev_vel2);
+  std::swap(dev_pos, dev_posReshuffled);
 }
 
 void Boids::endSimulation() {
