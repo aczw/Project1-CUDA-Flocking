@@ -32,7 +32,7 @@ There were two parameters that I varied across testing: the block size (number o
 * Block size: 64, 128, 256, 512, 1024
 * Number of boids: 10k, 25k, 50k, 100k, 250k, 750k, 1500k
 
-The raw data is available as CSV files in the [`analysis`](https://github.com/aczw/Project1-CUDA-Flocking/tree/main/analysis) folder. Rows are boid count in increasing order, columns are block size in increasing order.
+The raw data is available as CSV files in the [`analysis`](https://github.com/aczw/Project1-CUDA-Flocking/tree/main/analysis) folder. Rows are block size in increasing order, columns are boid count in increasing order.
 
 ### Graphs
 
@@ -56,7 +56,7 @@ The second set of graphics look more closely at how the average framerate varies
 |![](analysis/graphs/block_novis_100k.png)|![](analysis/graphs/block_vis_100k.png)|
 |![](analysis/graphs/block_novis_750k.png)|![](analysis/graphs/block_vis_750k.png)|
 
-###
+### Q&A
 
 > For each implementation, how does changing the number of boids affect performance? Why do you think this is?
 
@@ -68,7 +68,7 @@ Surprisingly, changing the block size did not make much of a difference. I assum
 
 > For the coherent uniform grid: did you experience any performance improvements with the more coherent uniform grid? Was this the outcome you expected? Why or why not?
 
-Yes, I achieve performance improvements, but it was lower than I expected. The results make sense though. By allowing physically adjcent grid cells to also be contiguous in memory, this reduces potential cache misses and improves memory access times because the locations are less random.
+Yes, I achieved performance improvements, but it was lower than I expected. The results make sense though. By allowing physically adjacent grid cells to also be contiguous in memory, this reduces potential cache misses and improves memory access times because the locations are less random.
 
 > Did changing cell width and checking 27 vs 8 neighboring cells affect performance? Why or why not? Be careful: it is insufficient (and possibly incorrect) to say that 27-cell is slower simply because there are more cells to check!
 
