@@ -1,3 +1,6 @@
+> [!NOTE]
+> A much more up to date version of this write-up is available on my website at [charleszw.com/projects/cuda-boids](https://charleszw.com/projects/cuda-boids)!
+
 **University of Pennsylvania, CIS 5650: GPU Programming and Architecture,
 Project 1 - Flocking**
 
